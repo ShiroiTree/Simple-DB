@@ -37,14 +37,15 @@ public class TupleDesc implements Serializable {
         }
     }
 
+    private final List<TDItem> myList;
+
     /**
      * @return
      *        An iterator which iterates over all the field TDItems
      *        that are included in this TupleDesc
      * */
     public Iterator<TDItem> iterator() {
-        // some code goes here
-        return null;
+        return myList.iterator();
     }
 
     private static final long serialVersionUID = 1L;
@@ -61,7 +62,12 @@ public class TupleDesc implements Serializable {
      *            be null.
      */
     public TupleDesc(Type[] typeAr, String[] fieldAr) {
-        // some code goes here
+        myList = new ArrayList<>();
+
+        for (int i = 0; i < typeAr.length; i++) {
+            TDItem item = new TDItem(typeAr[i], fieldAr[i]);
+            myList.add(item);
+        }
     }
 
     /**
@@ -73,15 +79,19 @@ public class TupleDesc implements Serializable {
      *            TupleDesc. It must contain at least one entry.
      */
     public TupleDesc(Type[] typeAr) {
-        // some code goes here
+        myList = new ArrayList<>();
+
+        for (int i = 0; i < typeAr.length; i++) {
+            TDItem item = new TDItem(typeAr[i], "unnamed");
+            myList.add(item);
+        }
     }
 
     /**
      * @return the number of fields in this TupleDesc
      */
     public int numFields() {
-        // some code goes here
-        return 0;
+        return myList.size();
     }
 
     /**
@@ -94,8 +104,10 @@ public class TupleDesc implements Serializable {
      *             if i is not a valid field reference.
      */
     public String getFieldName(int i) throws NoSuchElementException {
-        // some code goes here
-        return null;
+        if (i > numFields()) {
+            throw new NoSuchElementException("Out of range");
+        }
+        return myList.get(i).fieldName;
     }
 
     /**
@@ -109,8 +121,10 @@ public class TupleDesc implements Serializable {
      *             if i is not a valid field reference.
      */
     public Type getFieldType(int i) throws NoSuchElementException {
-        // some code goes here
-        return null;
+        if (i > numFields()) {
+            throw new NoSuchElementException("Out of range");
+        }
+        return myList.get(i).fieldType;
     }
 
     /**
@@ -123,8 +137,12 @@ public class TupleDesc implements Serializable {
      *             if no field with a matching name is found.
      */
     public int fieldNameToIndex(String name) throws NoSuchElementException {
-        // some code goes here
-        return 0;
+        for (int i = 0; i < numFields(); i++) {
+            if (myList.get(i).fieldName.equals(name)) {
+                return i;
+            }
+        }
+        throw new NoSuchElementException("Element not found");
     }
 
     /**
@@ -132,8 +150,11 @@ public class TupleDesc implements Serializable {
      *         Note that tuples from a given TupleDesc are of a fixed size.
      */
     public int getSize() {
-        // some code goes here
-        return 0;
+        int size = 0;
+        for (int i = 0; i < numFields(); i++) {
+            size += getFieldType(i).getLen();
+        }
+        return size;
     }
 
     /**
@@ -147,8 +168,31 @@ public class TupleDesc implements Serializable {
      * @return the new TupleDesc
      */
     public static TupleDesc merge(TupleDesc td1, TupleDesc td2) {
-        // some code goes here
-        return null;
+        if (td1 == null && td2 == null) {
+            return null;
+        }
+        if (td1 == null) {
+            return td2;
+        }
+        if (td2 == null) {
+            return td1;
+        }
+
+        int total = td1.numFields() + td2.numFields();
+        Type[] newType = new Type[total];
+        String[] newString = new String[total];
+        
+        for (int i = 0; i < td1.numFields(); i++) {
+            newType[i] = td1.getFieldType(i);
+            newString[i] = td1.getFieldName(i);
+        }
+        
+        for (int i = 0; i < td2.numFields(); i++) {
+            newType[i + td1.numFields()] = td2.getFieldType(i);
+            newString[i + td1.numFields()] = td2.getFieldName(i);
+        }
+        
+        return new TupleDesc(newType, newString);
     }
 
     /**
@@ -161,16 +205,35 @@ public class TupleDesc implements Serializable {
      *            the Object to be compared for equality with this TupleDesc.
      * @return true if the object is equal to this TupleDesc.
      */
-
     public boolean equals(Object o) {
-        // some code goes here
-        return false;
+        if (o == this) {
+            return true;
+        }
+        if (!(o instanceof TupleDesc)) {
+            return false;
+        }
+
+        TupleDesc other = (TupleDesc) o;
+
+        if (other.numFields() != numFields()) {
+            return false;
+        }
+
+        for (int i = 0; i < other.numFields(); i++) {
+            if (!other.getFieldType(i).equals(this.getFieldType(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public int hashCode() {
-        // If you want to use TupleDesc as keys for HashMap, implement this so
-        // that equal objects have equals hashCode() results
-        throw new UnsupportedOperationException("unimplemented");
+        int res = 1;
+        for (int i = 0; i < numFields(); i++) {
+            Type type = getFieldType(i);
+            res = 31 * res + (type == null ? 0 : type.hashCode());
+        }
+        return res;
     }
 
     /**
@@ -181,7 +244,13 @@ public class TupleDesc implements Serializable {
      * @return String describing this descriptor.
      */
     public String toString() {
-        // some code goes here
-        return "";
+        String string = "";
+        string += getFieldType(1).toString() + '[' + Integer.toString(1) + ']'
+                + '(' + getFieldName(1) + '[' + Integer.toString(1) + "])";
+        for (int i = 1; i < numFields(); i++) {
+            string += ", " + getFieldType(i).toString() + '[' + Integer.toString(i) + ']'
+                    + '(' + getFieldName(i) + '[' + Integer.toString(i) + "])";
+        }
+        return string;
     }
 }
