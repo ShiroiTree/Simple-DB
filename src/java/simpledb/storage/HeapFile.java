@@ -26,8 +26,6 @@ public class HeapFile implements DbFile {
     private final File file;
     private final TupleDesc tupleDesc;
 
-    private final BufferPool bufferPool;
-
     /**
      * Constructs a heap file backed by the specified file.
      * 
@@ -38,7 +36,6 @@ public class HeapFile implements DbFile {
     public HeapFile(File f, TupleDesc td) {
         this.file = f;
         this.tupleDesc = td;
-        this.bufferPool = Database.getBufferPool();
     }
 
     /**

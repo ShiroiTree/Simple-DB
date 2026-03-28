@@ -161,7 +161,7 @@ public class BufferPool {
         if (tid == null || pid == null || perm == null) {
             throw new DbException("Invalid arguments to getPage");
         }
-        if (pageCache.size() == numPages) {
+        if (pageCache.size() >= numPages) {
             evictPage();
         }
 
@@ -172,6 +172,7 @@ public class BufferPool {
                 throw new DbException("No DbFile for table " + pid.getTableId());
             }
             page = dbFile.readPage(pid);
+            pageCache.put(pid, page);
         }
 
         Lock lock = lockMap.computeIfAbsent(pid, Lock::new);
