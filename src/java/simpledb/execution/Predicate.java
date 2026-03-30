@@ -3,6 +3,7 @@ package simpledb.execution;
 import simpledb.storage.Field;
 import simpledb.storage.Tuple;
 
+import java.io.File;
 import java.io.Serializable;
 
 /**
@@ -46,6 +47,10 @@ public class Predicate implements Serializable {
         }
 
     }
+
+    private final int field;
+    private final Op op;
+    private final Field operand;
     
     /**
      * Constructor.
@@ -58,7 +63,9 @@ public class Predicate implements Serializable {
      *            field value to compare passed in tuples to
      */
     public Predicate(int field, Op op, Field operand) {
-        // some code goes here
+        this.field = field;
+        this.op = op;
+        this.operand = operand;
     }
 
     /**
@@ -66,8 +73,7 @@ public class Predicate implements Serializable {
      */
     public int getField()
     {
-        // some code goes here
-        return -1;
+        return field;
     }
 
     /**
@@ -75,8 +81,7 @@ public class Predicate implements Serializable {
      */
     public Op getOp()
     {
-        // some code goes here
-        return null;
+        return op;
     }
     
     /**
@@ -84,8 +89,7 @@ public class Predicate implements Serializable {
      */
     public Field getOperand()
     {
-        // some code goes here
-        return null;
+       return  operand;
     }
     
     /**
@@ -99,8 +103,11 @@ public class Predicate implements Serializable {
      * @return true if the comparison is true, false otherwise.
      */
     public boolean filter(Tuple t) {
-        // some code goes here
-        return false;
+        if (t == null) {
+            return false;
+        }
+        Field f = t.getField(this.field);
+        return f.compare(op, operand);
     }
 
     /**
@@ -108,7 +115,11 @@ public class Predicate implements Serializable {
      * operand_string"
      */
     public String toString() {
-        // some code goes here
-        return "";
+        String string = "";
+        string += "f = " + Integer.toString(field) + " ";
+        string += "op = " + op.toString() + " ";
+        string += "operand = " + operand.toString();
+
+        return  string;
     }
 }

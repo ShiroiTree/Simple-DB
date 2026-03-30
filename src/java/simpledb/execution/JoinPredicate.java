@@ -2,6 +2,7 @@ package simpledb.execution;
 
 import simpledb.storage.Field;
 import simpledb.storage.Tuple;
+import simpledb.storage.TupleDesc;
 
 import java.io.Serializable;
 
@@ -12,6 +13,10 @@ import java.io.Serializable;
 public class JoinPredicate implements Serializable {
 
     private static final long serialVersionUID = 1L;
+
+    private final int field1;
+    private final int field2;
+    private final Predicate.Op op;
 
     /**
      * Constructor -- create a new predicate over two fields of two tuples.
@@ -28,7 +33,9 @@ public class JoinPredicate implements Serializable {
      * @see Predicate
      */
     public JoinPredicate(int field1, Predicate.Op op, int field2) {
-        // some code goes here
+        this.field1 = field1;
+        this.field2 = field2;
+        this.op = op;
     }
 
     /**
@@ -38,25 +45,26 @@ public class JoinPredicate implements Serializable {
      * @return true if the tuples satisfy the predicate.
      */
     public boolean filter(Tuple t1, Tuple t2) {
-        // some code goes here
-        return false;
+        if (t1 == null || t2 == null) {
+            return false;
+        }
+        Field first = t1.getField(field1);
+        Field second = t2.getField(field2);
+        return first.compare(op ,second);
     }
     
     public int getField1()
     {
-        // some code goes here
-        return -1;
+        return field1;
     }
     
     public int getField2()
     {
-        // some code goes here
-        return -1;
+        return field2;
     }
     
     public Predicate.Op getOperator()
     {
-        // some code goes here
-        return null;
+        return op;
     }
 }
