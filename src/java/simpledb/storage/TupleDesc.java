@@ -245,8 +245,8 @@ public class TupleDesc implements Serializable {
      */
     public String toString() {
         String string = "";
-        string += getFieldType(1).toString() + '[' + Integer.toString(1) + ']'
-                + '(' + getFieldName(1) + '[' + Integer.toString(1) + "])";
+        string += getFieldType(0).toString() + '[' + Integer.toString(0) + ']'
+                + '(' + getFieldName(0) + '[' + Integer.toString(0) + "])";
         for (int i = 1; i < numFields(); i++) {
             string += ", " + getFieldType(i).toString() + '[' + Integer.toString(i) + ']'
                     + '(' + getFieldName(i) + '[' + Integer.toString(i) + "])";
