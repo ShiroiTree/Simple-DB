@@ -10,9 +10,7 @@ import simpledb.transaction.TransactionId;
 
 import java.io.*;
 
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -115,6 +113,8 @@ public class BufferPool {
 
     private Integer numPages;
     private Map<PageId, Page> pageCache;
+
+    private final Random random = new Random();
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -227,6 +227,16 @@ public class BufferPool {
         // not necessary for lab1|lab2
     }
 
+    private void updateBufferPool(List<Page> pageList, TransactionId tid) throws DbException {
+        for (Page page : pageList) {
+            page.markDirty(true, tid);
+            if (pageCache.size() == numPages) {
+                evictPage();
+            }
+            pageCache.put(page.getId(), page);
+        }
+    }
+
     /**
      * Add a tuple to the specified table on behalf of transaction tid.  Will
      * acquire a write lock on the page the tuple is added to and any other 
@@ -244,8 +254,8 @@ public class BufferPool {
      */
     public void insertTuple(TransactionId tid, int tableId, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
-        // some code goes here
-        // not necessary for lab1
+        DbFile dbFile = Database.getCatalog().getDatabaseFile(tableId);
+        updateBufferPool(dbFile.insertTuple(tid, t), tid);
     }
 
     /**
@@ -263,8 +273,8 @@ public class BufferPool {
      */
     public  void deleteTuple(TransactionId tid, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
-        // some code goes here
-        // not necessary for lab1
+        DbFile dbFile = Database.getCatalog().getDatabaseFile(t.getRecordId().getPageId().getTableId());
+        updateBufferPool(dbFile.deleteTuple(tid, t), tid);
     }
 
     /**
@@ -273,9 +283,12 @@ public class BufferPool {
      *     break simpledb if running in NO STEAL mode.
      */
     public synchronized void flushAllPages() throws IOException {
-        // some code goes here
-        // not necessary for lab1
-
+        for (Map.Entry<PageId, Page> entry : pageCache.entrySet()) {
+            Page page = entry.getValue();
+            if (page.isDirty() != null) {
+                flushPage(page.getId());
+            }
+        }
     }
 
     /** Remove the specific page id from the buffer pool.
@@ -287,8 +300,7 @@ public class BufferPool {
         are removed from the cache so they can be reused safely
     */
     public synchronized void discardPage(PageId pid) {
-        // some code goes here
-        // not necessary for lab1
+        pageCache.remove(pid);
     }
 
     /**
@@ -296,8 +308,16 @@ public class BufferPool {
      * @param pid an ID indicating the page to flush
      */
     private synchronized  void flushPage(PageId pid) throws IOException {
-        // some code goes here
-        // not necessary for lab1
+        Page flush = pageCache.get(pid);
+        int tableId = flush.getId().getTableId();
+        DbFile dbFile = Database.getCatalog().getDatabaseFile(tableId);
+        TransactionId dirtier = flush.isDirty();
+        if (dirtier != null) {
+            Database.getLogFile().logWrite(dirtier, flush.getBeforeImage(), flush);
+            Database.getLogFile().force();
+        }
+        dbFile.writePage(flush);
+        flush.markDirty(false, null);
     }
 
     /** Write all pages of the specified transaction to disk.
@@ -311,9 +331,24 @@ public class BufferPool {
      * Discards a page from the buffer pool.
      * Flushes the page to disk to ensure dirty pages are updated on disk.
      */
-    private synchronized  void evictPage() throws DbException {
-        // some code goes here
-        // not necessary for lab1
+    private synchronized void evictPage() throws DbException {
+        if (pageCache.isEmpty()) {
+            return;
+        }
+
+        List<PageId> pageIds = new ArrayList<>(pageCache.keySet());
+        for (int attempt = 0; attempt < pageIds.size() * 2; attempt++) {
+            int randomIndex = random.nextInt(pageIds.size());
+            PageId victimId = pageIds.get(randomIndex);
+            Page victimPage = pageCache.get(victimId);
+            if (victimPage.isDirty() == null) {
+                discardPage(victimId);
+                pageCache.remove(victimId);
+                return;
+            }
+        }
+        throw new DbException("All pages in buffer pool are dirty!");
     }
+
 
 }
