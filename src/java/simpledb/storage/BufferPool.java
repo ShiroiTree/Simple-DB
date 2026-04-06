@@ -343,9 +343,14 @@ public class BufferPool {
 
     /** Write all pages of the specified transaction to disk.
      */
-    public synchronized  void flushPages(TransactionId tid) throws IOException {
-        // some code goes here
-        // not necessary for lab1|lab2
+    public synchronized void flushPages(TransactionId tid) throws IOException {
+        for (Map.Entry<PageId, Page> entry : pageCache.entrySet()) {
+            Page page = entry.getValue();
+            page.setBeforeImage();
+            if (page.isDirty() == tid) {
+                flushPage(page.getId());
+            }
+        }
     }
 
     /**
