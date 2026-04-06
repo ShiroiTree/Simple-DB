@@ -58,7 +58,7 @@ public class BufferPool {
         }
 
         private boolean acquireShared(TransactionId tid) {
-            while (exclusiveLock != null && exclusiveLock != tid) {
+            while (exclusiveLock != null && exclusiveLock.equals(tid)) {
                 try {
                     wait();
                 } catch (InterruptedException e) {
@@ -96,6 +96,18 @@ public class BufferPool {
             return true;
         }
 
+        public synchronized void release(TransactionId tid) {
+            boolean wasHolding = sharedLocks.remove(tid);
+
+            if (exclusiveLock != null && exclusiveLock.equals(tid)) {
+                exclusiveLock = null;
+                wasHolding = true;
+            }
+            if (wasHolding) {
+                notifyAll();
+            }
+        }
+
         public synchronized boolean holdsLock(TransactionId tid) {
             return sharedLocks.contains(tid) ||
                     (exclusiveLock != null && exclusiveLock.equals(tid));
@@ -111,8 +123,8 @@ public class BufferPool {
      */
     private static final Map<PageId, Lock> lockMap = new ConcurrentHashMap<>();
 
-    private Integer numPages;
-    private Map<PageId, Page> pageCache;
+    private final Integer numPages;
+    private final Map<PageId, Page> pageCache;
 
     private final Random random = new Random();
 
@@ -194,8 +206,10 @@ public class BufferPool {
      * @param pid the ID of the page to unlock
      */
     public  void unsafeReleasePage(TransactionId tid, PageId pid) {
-        // some code goes here
-        // not necessary for lab1|lab2
+        Lock lock = lockMap.get(pid);
+        if (lock != null) {
+            lock.release(tid);
+        }
     }
 
     /**
@@ -204,8 +218,7 @@ public class BufferPool {
      * @param tid the ID of the transaction requesting the unlock
      */
     public void transactionComplete(TransactionId tid) {
-        // some code goes here
-        // not necessary for lab1|lab2
+        transactionComplete(tid, true);
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
@@ -223,8 +236,16 @@ public class BufferPool {
      * @param commit a flag indicating whether we should commit or abort
      */
     public void transactionComplete(TransactionId tid, boolean commit) {
-        // some code goes here
-        // not necessary for lab1|lab2
+        if (commit) {
+            try {
+                flushPages(tid);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        for (PageId pid : new ArrayList<>(lockMap.keySet())) {
+            unsafeReleasePage(tid, pid);
+        }
     }
 
     private void updateBufferPool(List<Page> pageList, TransactionId tid) throws DbException {

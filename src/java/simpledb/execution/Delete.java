@@ -2,6 +2,7 @@ package simpledb.execution;
 
 import simpledb.common.Database;
 import simpledb.common.DbException;
+import simpledb.common.Permissions;
 import simpledb.common.Type;
 import simpledb.storage.BufferPool;
 import simpledb.storage.IntField;
@@ -20,6 +21,14 @@ public class Delete extends Operator {
 
     private static final long serialVersionUID = 1L;
 
+    private final TransactionId tid;
+    private OpIterator child;
+
+    private final BufferPool bufferPool;
+
+    private Tuple deleteTuple;
+    private final TupleDesc deleteTupleDesc;
+
     /**
      * Constructor specifying the transaction that this delete belongs to as
      * well as the child to read from.
@@ -30,24 +39,31 @@ public class Delete extends Operator {
      *            The child operator from which to read tuples for deletion
      */
     public Delete(TransactionId t, OpIterator child) {
-        // some code goes here
+        this.tid = t;
+        this.child = child;
+
+        this.bufferPool = Database.getBufferPool();
+
+        this.deleteTuple = null;
+        this.deleteTupleDesc = new TupleDesc(new Type[] {Type.INT_TYPE});
     }
 
     public TupleDesc getTupleDesc() {
-        // some code goes here
-        return null;
+        return deleteTupleDesc;
     }
 
     public void open() throws DbException, TransactionAbortedException {
-        // some code goes here
+        super.open();
+        child.open();
     }
 
     public void close() {
-        // some code goes here
+        child.close();
+        super.close();
     }
 
     public void rewind() throws DbException, TransactionAbortedException {
-        // some code goes here
+        child.rewind();
     }
 
     /**
@@ -60,19 +76,32 @@ public class Delete extends Operator {
      * @see BufferPool#deleteTuple
      */
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
-        // some code goes here
-        return null;
+        if (deleteTuple != null) {
+            return null;
+        }
+        int count = 0;
+        while (child.hasNext()) {
+            try {
+                bufferPool.deleteTuple(tid, child.next());
+                count++;
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        deleteTuple = new Tuple(deleteTupleDesc);
+        deleteTuple.setField(0, new IntField(count));
+        bufferPool.transactionComplete(tid, true);
+        return deleteTuple;
     }
 
     @Override
     public OpIterator[] getChildren() {
-        // some code goes here
-        return null;
+        return new OpIterator[] {child};
     }
 
     @Override
     public void setChildren(OpIterator[] children) {
-        // some code goes here
+        this.child = children[0];
     }
 
 }
