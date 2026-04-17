@@ -92,6 +92,8 @@ public class BufferPool {
             throw new DbException("Invalid arguments to getPage");
         }
 
+        long start = System.currentTimeMillis();
+        long timeout = new Random().nextInt(2000) + 1000;
         while (true) {
             try {
                 if (lockManager.acquireLock(tid, pid, perm)) {
@@ -100,13 +102,17 @@ public class BufferPool {
             } catch (InterruptedException e) {
                e.printStackTrace();
             }
-        }
-
-        if (pageCache.size() >= numPages) {
-            evictPage();
+            long now = System.currentTimeMillis();
+            if (now - start > timeout) {
+                throw new TransactionAbortedException();
+            }
         }
 
         Page page = pageCache.get(pid);
+        if (page == null && pageCache.size() >= numPages) {
+            evictPage();
+        }
+
         if (page == null) {
             DbFile dbFile = Database.getCatalog().getDatabaseFile(pid.getTableId());
             if (dbFile == null) {
@@ -160,6 +166,18 @@ public class BufferPool {
             } catch (IOException e) {
                 e.printStackTrace();
             }
+        } else {
+            for (Map.Entry<PageId, Page> entry : pageCache.entrySet()) {
+                PageId pid = entry.getKey();
+                Page page = entry.getValue();
+                if (page.isDirty() == tid) {
+                    int tableId = pid.getTableId();
+                    DbFile dbFile = Database.getCatalog().getDatabaseFile(tableId);
+                    Page cleanPage = dbFile.readPage(pid);
+                    pageCache.put(pid, cleanPage);
+                }
+            }
+            System.out.println("read from disk");
         }
         lockManager.releaseAllLock(tid);
     }
@@ -244,7 +262,7 @@ public class BufferPool {
      * Flushes a certain page to disk
      * @param pid an ID indicating the page to flush
      */
-    private synchronized  void flushPage(PageId pid) throws IOException {
+    private synchronized void flushPage(PageId pid) throws IOException {
         Page flush = pageCache.get(pid);
         int tableId = flush.getId().getTableId();
         DbFile dbFile = Database.getCatalog().getDatabaseFile(tableId);
@@ -278,14 +296,10 @@ public class BufferPool {
             return;
         }
 
-        List<PageId> pageIds = new ArrayList<>(pageCache.keySet());
-        for (int attempt = 0; attempt < pageIds.size() * 2; attempt++) {
-            int randomIndex = random.nextInt(pageIds.size());
-            PageId victimId = pageIds.get(randomIndex);
-            Page victimPage = pageCache.get(victimId);
-            if (victimPage.isDirty() == null) {
-                discardPage(victimId);
-                pageCache.remove(victimId);
+        for (Page page : pageCache.values()) {
+            if (page.isDirty() == null) {
+                discardPage(page.getId());
+                pageCache.remove(page.getId());
                 return;
             }
         }
