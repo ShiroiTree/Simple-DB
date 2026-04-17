@@ -8,10 +8,14 @@ import simpledb.transaction.Transaction;
 import simpledb.transaction.TransactionAbortedException;
 import simpledb.transaction.TransactionId;
 
+import simpledb.transaction.PageLock;
+import simpledb.transaction.LockManager;
+
 import java.io.*;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Lock;
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -35,96 +39,10 @@ public class BufferPool {
     constructor instead. */
     public static final int DEFAULT_PAGES = 50;
 
-    /**
-     *  TODO: add a dead lock detection
-     */
-    private static class Lock {
-        private final PageId pid;
-        private final Set<TransactionId> sharedLocks;
-        private TransactionId exclusiveLock;
-
-        public Lock(PageId pid) {
-            this.pid = pid;
-            this.sharedLocks = new HashSet<>();
-            this.exclusiveLock = null;
-        }
-
-        public synchronized boolean acquireLock(TransactionId tid, Permissions perm) {
-            if (perm == Permissions.READ_ONLY) {
-                return acquireShared(tid);
-            } else {
-                return acquireExclusive(tid);
-            }
-        }
-
-        private boolean acquireShared(TransactionId tid) {
-            while (exclusiveLock != null && exclusiveLock.equals(tid)) {
-                try {
-                    wait();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return false;
-                }
-            }
-            sharedLocks.add(tid);
-            return true;
-        }
-
-        private boolean acquireExclusive(TransactionId tid) {
-            while (exclusiveLock != null && !exclusiveLock.equals(tid)) {
-                try {
-                    wait();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return false;
-                }
-            }
-
-            while (!sharedLocks.isEmpty() &&
-                    !(sharedLocks.size() == 1 && sharedLocks.contains(tid))) {
-                try {
-                    wait();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return false;
-                }
-            }
-
-            // 清除自己的共享锁（锁升级）
-            sharedLocks.remove(tid);
-            exclusiveLock = tid;
-            return true;
-        }
-
-        public synchronized void release(TransactionId tid) {
-            boolean wasHolding = sharedLocks.remove(tid);
-
-            if (exclusiveLock != null && exclusiveLock.equals(tid)) {
-                exclusiveLock = null;
-                wasHolding = true;
-            }
-            if (wasHolding) {
-                notifyAll();
-            }
-        }
-
-        public synchronized boolean holdsLock(TransactionId tid) {
-            return sharedLocks.contains(tid) ||
-                    (exclusiveLock != null && exclusiveLock.equals(tid));
-        }
-
-        public synchronized boolean hasNoHolders() {
-            return sharedLocks.isEmpty() && exclusiveLock == null;
-        }
-    }
-
-    /**
-     *  Only use locker to access the Lock class to keep lock table unique.
-     */
-    private static final Map<PageId, Lock> lockMap = new ConcurrentHashMap<>();
-
     private final Integer numPages;
     private final Map<PageId, Page> pageCache;
+
+    private final LockManager lockManager = new LockManager();
 
     private final Random random = new Random();
 
@@ -168,11 +86,22 @@ public class BufferPool {
      * @param perm the requested permissions on the page
      */
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
-        throws TransactionAbortedException, DbException {
+            throws TransactionAbortedException, DbException {
 
         if (tid == null || pid == null || perm == null) {
             throw new DbException("Invalid arguments to getPage");
         }
+
+        while (true) {
+            try {
+                if (lockManager.acquireLock(tid, pid, perm)) {
+                    break;
+                }
+            } catch (InterruptedException e) {
+               e.printStackTrace();
+            }
+        }
+
         if (pageCache.size() >= numPages) {
             evictPage();
         }
@@ -185,12 +114,6 @@ public class BufferPool {
             }
             page = dbFile.readPage(pid);
             pageCache.put(pid, page);
-        }
-
-        Lock lock = lockMap.computeIfAbsent(pid, Lock::new);
-        boolean ifAcquired = lock.acquireLock(tid, perm);
-        if (!ifAcquired) {
-            throw new TransactionAbortedException();
         }
 
         return page;
@@ -206,10 +129,7 @@ public class BufferPool {
      * @param pid the ID of the page to unlock
      */
     public  void unsafeReleasePage(TransactionId tid, PageId pid) {
-        Lock lock = lockMap.get(pid);
-        if (lock != null) {
-            lock.release(tid);
-        }
+        lockManager.releaseLock(tid, pid);
     }
 
     /**
@@ -222,10 +142,8 @@ public class BufferPool {
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
-    public boolean holdsLock(TransactionId tid, PageId p) {
-        // some code goes here
-        // not necessary for lab1|lab2
-        return false;
+    public boolean holdsLock(TransactionId tid, PageId pid) {
+        return lockManager.holdsLock(tid, pid);
     }
 
     /**
@@ -243,9 +161,7 @@ public class BufferPool {
                 e.printStackTrace();
             }
         }
-        for (PageId pid : new ArrayList<>(lockMap.keySet())) {
-            unsafeReleasePage(tid, pid);
-        }
+        lockManager.releaseAllLock(tid);
     }
 
     private void updateBufferPool(List<Page> pageList, TransactionId tid) throws DbException {
